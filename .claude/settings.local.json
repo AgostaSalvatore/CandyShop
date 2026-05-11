@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(pnpm dlx *)",
+      "PowerShell(pnpm install *)",
+      "PowerShell(pnpm exec *)",
+      "WebFetch(domain:www.candyshopinternational.com)",
+      "Bash(mkdir -p \"[locale]\")",
+      "Bash(mv layout.tsx page.tsx favicon.ico \"[locale]/\")",
+      "PowerShell(pnpm db:push *)",
+      "PowerShell(pnpm db:seed *)",
+      "Bash(mkdir -p \"\\(shop\\)\")",
+      "Bash(mv page.tsx \"\\(shop\\)/page.tsx\")",
+      "PowerShell(npx --no-install next build 2>&1 | Select-Object -Last 80)",
+      "PowerShell(npx --no-install next build 2>&1 | Select-Object -Last 60)"
+    ]
+  }
+}

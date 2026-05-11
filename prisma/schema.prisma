@@ -1,0 +1,267 @@
+// CandyShop schema — Postgres (Neon) + Prisma 6
+// Prezzi in centesimi (Int) per evitare problemi di precisione floating-point.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ────────────────────────── Auth ──────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  name          String?
+  image         String?
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]
+  addresses Address[]
+  cart      Cart?
+  orders    Order[]
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Address {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName  String
+  street    String
+  city      String
+  cap       String
+  phone     String
+  notes     String?
+  isDefault Boolean @default(false)
+
+  orders Order[]
+
+  @@index([userId])
+}
+
+// ────────────────────────── Catalogo ──────────────────────────
+
+model Category {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  nameIt    String
+  nameEn    String
+  image     String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  products Product[]
+}
+
+model Brand {
+  id   String  @id @default(cuid())
+  slug String  @unique
+  name String
+  logo String?
+
+  products Product[]
+}
+
+model Product {
+  id             String   @id @default(cuid())
+  slug           String   @unique
+  sku            String?  @unique
+  nameIt         String
+  nameEn         String
+  descIt         String   @default("")
+  descEn         String   @default("")
+  priceCents     Int
+  compareAtCents Int? // se > priceCents → in offerta
+  stock          Int      @default(0)
+  images         String[] @default([])
+  categoryId     String
+  brandId        String
+  isFeatured     Boolean  @default(false)
+  isNew          Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  category   Category           @relation(fields: [categoryId], references: [id])
+  brand      Brand              @relation(fields: [brandId], references: [id])
+  attributes ProductAttribute[]
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+
+  @@index([categoryId, isActive])
+  @@index([brandId])
+  @@index([isFeatured])
+  @@index([isNew])
+}
+
+// Attributi filtrabili custom (es. gusto, peso, allergeni)
+model ProductAttribute {
+  id        String @id @default(cuid())
+  productId String
+  key       String
+  value     String
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, key])
+  @@index([key, value])
+}
+
+// ────────────────────────── Carrello ──────────────────────────
+
+model Cart {
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String @id @default(cuid())
+  cartId    String
+  productId String
+  quantity  Int    @default(1)
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([cartId, productId])
+}
+
+// ────────────────────────── Ordini ──────────────────────────
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model Order {
+  id                String        @id @default(cuid())
+  number            Int           @unique @default(autoincrement())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  status            OrderStatus   @default(PENDING)
+  subtotalCents     Int
+  shippingCents     Int           @default(0)
+  discountCents     Int           @default(0)
+  totalCents        Int
+  currency          String        @default("eur")
+  stripeSessionId   String?       @unique
+  stripePaymentId   String?
+  deliveryAddressId String
+  deliveryAddress   Address       @relation(fields: [deliveryAddressId], references: [id])
+  deliveryZoneId    String?
+  deliveryZone      DeliveryZone? @relation(fields: [deliveryZoneId], references: [id])
+  couponCode        String?
+  notes             String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  paidAt            DateTime?
+  deliveredAt       DateTime?
+
+  items OrderItem[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model OrderItem {
+  id           String @id @default(cuid())
+  orderId      String
+  productId    String
+  // Snapshot al momento dell'ordine (immutabile anche se il prodotto cambia)
+  nameSnapshot String
+  priceCents   Int
+  quantity     Int
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+}
+
+// ────────────────────────── Consegne & sconti ──────────────────────────
+
+model DeliveryZone {
+  id            String   @id @default(cuid())
+  name          String
+  capList       String[] @default([]) // CAP coperti
+  feeCents      Int      @default(0)
+  freeOverCents Int? // null = mai gratuita
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  orders Order[]
+}
+
+enum CouponType {
+  PERCENT
+  FIXED
+}
+
+model Coupon {
+  id            String     @id @default(cuid())
+  code          String     @unique
+  type          CouponType
+  value         Int // se PERCENT: 0-100; se FIXED: centesimi
+  minOrderCents Int        @default(0)
+  validFrom     DateTime?
+  validTo       DateTime?
+  maxUses       Int?
+  usedCount     Int        @default(0)
+  active        Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+}
