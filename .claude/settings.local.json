@@ -12,7 +12,8 @@
       "Bash(mkdir -p \"\\(shop\\)\")",
       "Bash(mv page.tsx \"\\(shop\\)/page.tsx\")",
       "PowerShell(npx --no-install next build 2>&1 | Select-Object -Last 80)",
-      "PowerShell(npx --no-install next build 2>&1 | Select-Object -Last 60)"
+      "PowerShell(npx --no-install next build 2>&1 | Select-Object -Last 60)",
+      "PowerShell(npx --no-install prisma generate 2>&1 | Select-Object -Last 10)"
     ]
   }
 }
