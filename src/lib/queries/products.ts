@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 
 const baseInclude = {
   brand: true,
@@ -8,52 +9,68 @@ const baseInclude = {
 
 export type ProductCard = Prisma.ProductGetPayload<{ include: typeof baseInclude }>;
 
-export async function getFeaturedProducts(limit = 8): Promise<ProductCard[]> {
-  return db.product.findMany({
-    where: { isActive: true, isFeatured: true },
-    include: baseInclude,
-    take: limit,
-    orderBy: { createdAt: "desc" },
-  });
-}
+export const getFeaturedProducts = unstable_cache(
+  async (limit = 8): Promise<ProductCard[]> => {
+    return db.product.findMany({
+      where: { isActive: true, isFeatured: true },
+      include: baseInclude,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+    });
+  },
+  ["featured-products"],
+  { revalidate: 120, tags: ["products"] },
+);
 
-export async function getNewProducts(limit = 8): Promise<ProductCard[]> {
-  return db.product.findMany({
-    where: { isActive: true, isNew: true },
-    include: baseInclude,
-    take: limit,
-    orderBy: { createdAt: "desc" },
-  });
-}
+export const getNewProducts = unstable_cache(
+  async (limit = 8): Promise<ProductCard[]> => {
+    return db.product.findMany({
+      where: { isActive: true, isNew: true },
+      include: baseInclude,
+      take: limit,
+      orderBy: { createdAt: "desc" },
+    });
+  },
+  ["new-products"],
+  { revalidate: 120, tags: ["products"] },
+);
 
-export async function getOnSaleProducts(limit = 8): Promise<ProductCard[]> {
-  // compareAtCents > priceCents indica sconto attivo
-  const all = await db.product.findMany({
-    where: { isActive: true, compareAtCents: { not: null } },
-    include: baseInclude,
-    take: limit * 2,
-    orderBy: { createdAt: "desc" },
-  });
-  return all.filter((p) => p.compareAtCents !== null && p.compareAtCents > p.priceCents).slice(0, limit);
-}
+export const getOnSaleProducts = unstable_cache(
+  async (limit = 8): Promise<ProductCard[]> => {
+    // compareAtCents > priceCents indica sconto attivo
+    const all = await db.product.findMany({
+      where: { isActive: true, compareAtCents: { not: null } },
+      include: baseInclude,
+      take: limit * 2,
+      orderBy: { createdAt: "desc" },
+    });
+    return all.filter((p) => p.compareAtCents !== null && p.compareAtCents > p.priceCents).slice(0, limit);
+  },
+  ["onsale-products"],
+  { revalidate: 120, tags: ["products"] },
+);
 
-export async function getRandomProducts(limit = 12): Promise<ProductCard[]> {
-  // Postgres random sampling
-  const ids = await db.$queryRaw<{ id: string }[]>`
-    SELECT id FROM "Product"
-    WHERE "isActive" = true
-    ORDER BY random()
-    LIMIT ${limit}
-  `;
-  if (ids.length === 0) return [];
-  const products = await db.product.findMany({
-    where: { id: { in: ids.map((r) => r.id) } },
-    include: baseInclude,
-  });
-  // Mantieni l'ordine random restituito dalla query
-  const order = new Map(ids.map((r, i) => [r.id, i]));
-  return products.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-}
+export const getRandomProducts = unstable_cache(
+  async (limit = 12): Promise<ProductCard[]> => {
+    // Postgres random sampling
+    const ids = await db.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Product"
+      WHERE "isActive" = true
+      ORDER BY random()
+      LIMIT ${limit}
+    `;
+    if (ids.length === 0) return [];
+    const products = await db.product.findMany({
+      where: { id: { in: ids.map((r) => r.id) } },
+      include: baseInclude,
+    });
+    // Mantieni l'ordine random restituito dalla query
+    const order = new Map(ids.map((r, i) => [r.id, i]));
+    return products.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  },
+  ["random-products"],
+  { revalidate: 60, tags: ["products"] },
+);
 
 export async function getProductBySlug(slug: string): Promise<
   Prisma.ProductGetPayload<{ include: typeof baseInclude & { attributes: true } }> | null
@@ -138,18 +155,27 @@ export async function getCatalog(filters: CatalogFilters = {}) {
   };
 }
 
-export async function getCategoriesWithCount() {
-  const cats = await db.category.findMany({
-    orderBy: { sortOrder: "asc" },
-    include: { _count: { select: { products: { where: { isActive: true } } } } },
-  });
-  return cats;
-}
+export const getCategoriesWithCount = unstable_cache(
+  async () => {
+    const cats = await db.category.findMany({
+      orderBy: { sortOrder: "asc" },
+      include: { _count: { select: { products: { where: { isActive: true } } } } },
+    });
+    return cats;
+  },
+  ["categories-with-count"],
+  { revalidate: 120, tags: ["categories"] },
+);
 
-export async function getBrandsWithCount() {
-  const brands = await db.brand.findMany({
-    orderBy: { name: "asc" },
-    include: { _count: { select: { products: { where: { isActive: true } } } } },
-  });
-  return brands;
-}
+export const getBrandsWithCount = unstable_cache(
+  async () => {
+    const brands = await db.brand.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { products: { where: { isActive: true } } } } },
+    });
+    return brands;
+  },
+  ["brands-with-count"],
+  { revalidate: 120, tags: ["brands"] },
+);
+

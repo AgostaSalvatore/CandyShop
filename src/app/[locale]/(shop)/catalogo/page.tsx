@@ -13,6 +13,8 @@ import { FiltersDrawer } from "@/components/shop/filters-drawer";
 import { Link } from "@/i18n/navigation";
 import { buttonVariants } from "@/components/ui/button";
 
+export const revalidate = 60;
+
 type SP = Promise<Record<string, string | string[] | undefined>>;
 
 function parseFilters(
